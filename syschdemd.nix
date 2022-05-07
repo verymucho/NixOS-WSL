@@ -21,6 +21,6 @@ pkgs.substituteAll {
 
   systemdWrapper = pkgs.writeShellScript "systemd-wrapper.sh" ''
     mount -t binfmt_misc binfmt_misc /proc/sys/fs/binfmt_misc || true
-    exec systemd
+    exec systemd --unit=multi-user.target
   '';
 }

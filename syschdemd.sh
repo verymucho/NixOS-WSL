@@ -12,10 +12,10 @@ function start_systemd {
 
     PATH=/run/current-system/systemd/lib/systemd:@fsPackagesPath@ \
         LOCALE_ARCHIVE=/run/current-system/sw/lib/locale/locale-archive \
-        @daemonize@/bin/daemonize /run/current-system/sw/bin/unshare -fp --mount-proc @systemdWrapper@
+        @daemonize@/bin/daemonize /run/current-system/sw/bin/unshare -fp --mount-proc --propagation shared @systemdWrapper@
 
     # Wait until systemd has been started to prevent a race condition from occuring
-    while ! /run/current-system/sw/bin/pgrep -xf systemd >/run/systemd.pid; do
+    while ! /run/current-system/sw/bin/pgrep -xf "systemd --unit=multi-user.target" >/run/systemd.pid; do
         $sw/sleep 1s
     done
 

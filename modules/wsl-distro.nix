@@ -15,13 +15,18 @@ with builtins; with lib;
       };
       automountOptions = mkOption {
         type = str;
-        default = "metadata,uid=1000,gid=100";
+        default = "metadata,uid=1000,gid=100,case=dir";
         description = "Options to use when mounting windows drives";
       };
       defaultUser = mkOption {
         type = str;
         default = "nixos";
         description = "The name of the default user";
+      };
+      defaultHostname = mkOption {
+        type = str;
+        default = "NIXOS";
+        description = "The hostname of the WSL instance";
       };
       startMenuLaunchers = mkEnableOption "shortcuts for GUI applications in the windows start menu";
       wslConf = mkOption {
@@ -43,10 +48,16 @@ with builtins; with lib;
         };
       };
 
+      wslg = mkOption {
+        type = bool;
+        default = true;
+        description = "Fix user runtime mount so it points to /mnt/wslg/runtime-dir";
+      };
+
       compatibility = {
         interopPreserveArgvZero = mkOption {
           type = nullOr bool;
-          default = null;
+          default = true;
           description = ''
             Register binfmt interpreter for Windows executables with 'preserves argv[0]' flag.
 
@@ -72,11 +83,16 @@ with builtins; with lib;
           root = "${cfg.automountPath}/";
           options = cfg.automountOptions;
         };
+
+        network = {
+          hostname = "${cfg.defaultHostname}";
+        };
       };
 
       # WSL is closer to a container than anything else
       boot = {
         isContainer = true;
+        enableContainers = true;
 
         binfmt.registrations = mkIf cfg.interop.register {
           WSLInterop =
@@ -113,6 +129,7 @@ with builtins; with lib;
             };
         };
       };
+      time.timeZone = "America/Phoenix";
       environment.noXlibs = lib.mkForce false; # override xlibs not being installed (due to isContainer) to enable the use of GUI apps
 
       environment = {
@@ -157,6 +174,13 @@ with builtins; with lib;
             ${pkgs.rsync}/bin/rsync -ar --delete $systemConfig/sw/share/$x/. /usr/share/$x
           done
         ''
+      );
+
+      systemd.services."user-runtime-dir@".serviceConfig = mkIf cfg.wslg (
+        lib.mkOverride 0 {
+          ExecStart = ''/run/wrappers/bin/mount --bind /mnt/wslg/runtime-dir /run/user/%i'';
+          ExecStop = ''/run/wrappers/bin/umount /run/user/%i'';
+        }
       );
 
       # Disable systemd units that don't make sense on WSL
