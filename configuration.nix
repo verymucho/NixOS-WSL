@@ -6,7 +6,7 @@ let
 in
 {
   imports = [
-    "${modulesPath}/profiles/minimal.nix"
+    "${modulesPath}/profiles/headless.nix"
 
     nixos-wsl.nixosModules.wsl
   ];
@@ -29,6 +29,7 @@ in
   };
 
   # Enable nix flakes
+  nixpkgs.config.allowUnfree = true;
   nix.autoOptimiseStore = true;
   nix.gc.automatic = true;
   nix.package = pkgs.nixFlakes;

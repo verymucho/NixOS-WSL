@@ -92,7 +92,7 @@ with builtins; with lib;
       # WSL is closer to a container than anything else
       boot = {
         isContainer = true;
-        enableContainers = true;
+	enableContainers = true;
 
         binfmt.registrations = mkIf cfg.interop.register {
           WSLInterop =
@@ -129,7 +129,6 @@ with builtins; with lib;
             };
         };
       };
-      time.timeZone = "America/Phoenix";
       environment.noXlibs = lib.mkForce false; # override xlibs not being installed (due to isContainer) to enable the use of GUI apps
 
       environment = {
@@ -145,12 +144,28 @@ with builtins; with lib;
         };
       };
 
+      # Set your time zone.
+      time.timeZone = "America/Phoenix";
+
+      # Select internationalisation properties.
+      i18n.defaultLocale = "en_US.UTF-8";
+
+      services = {
+        samba.enable = false;
+        blueman.enable = false;
+        printing.enable = false;
+        journald.extraConfig = ''
+          MaxRetentionSec=1week
+          SystemMaxUse=200M
+        '';
+      };
+
       networking.dhcpcd.enable = false;
 
       users.users.${cfg.defaultUser} = {
         isNormalUser = true;
         uid = 1000;
-        extraGroups = [ "wheel" ]; # Allow the default user to use sudo
+        extraGroups = [ "wheel" "lp" "docker" "networkmanager" "audio" "video" "plugdev" "kvm" "cdrom" "bluetooth" ]; # Allow the default user to use sudo
       };
 
       users.users.root = {
@@ -176,24 +191,32 @@ with builtins; with lib;
         ''
       );
 
-      systemd.services."user-runtime-dir@".serviceConfig = mkIf cfg.wslg (
-        lib.mkOverride 0 {
-          ExecStart = ''/run/wrappers/bin/mount --bind /mnt/wslg/runtime-dir /run/user/%i'';
-          ExecStop = ''/run/wrappers/bin/umount /run/user/%i'';
-        }
-      );
+      systemd.services = {
+        "user-runtime-dir@".serviceConfig = mkIf cfg.wslg (
+	  lib.mkOverride 0 {
+	    ExecStart = ''/run/wrappers/bin/mount --bind /mnt/wslg/runtime-dir /run/user/%i'';
+	    ExecStop = ''/run/wrappers/bin/umount /run/user/%i'';
+          }
+        );
 
-      # Disable systemd units that don't make sense on WSL
-      systemd.services."serial-getty@ttyS0".enable = false;
-      systemd.services."serial-getty@hvc0".enable = false;
-      systemd.services."getty@tty1".enable = false;
-      systemd.services."autovt@".enable = false;
+      systemd.suppressedSystemUnits = [
+        "systemd-networkd.service"
+        "systemd-networkd-wait-online.service"
+        "networkd-dispatcher.service"
+        "systemd-resolved.service"
+        "ModemManager.service"
+        "NetworkManager.service"
+        "NetworkManager-wait-online.service"
+        "pulseaudio.service"
+        "pulseaudio.socket"
+        "dirmngr.service"
+        "dirmngr.socket"
+        "sys-kernel-debug.mount"
+      ];
 
-      systemd.services.firewall.enable = false;
-      systemd.services.systemd-resolved.enable = false;
-      systemd.services.systemd-udevd.enable = false;
-
-      # Don't allow emergency mode, because we don't have a console.
-      systemd.enableEmergencyMode = false;
+        firewall.enable = false;
+        systemd-resolved.enable = false;
+        systemd-udevd.enable = false;
+      };
     };
 }
