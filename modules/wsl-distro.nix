@@ -92,7 +92,7 @@ with builtins; with lib;
       # WSL is closer to a container than anything else
       boot = {
         isContainer = true;
-	enableContainers = true;
+        enableContainers = true;
 
         binfmt.registrations = mkIf cfg.interop.register {
           WSLInterop =
