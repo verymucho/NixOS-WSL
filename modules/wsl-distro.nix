@@ -191,18 +191,16 @@ with builtins; with lib;
         ''
       );
 
-      systemd.services = {
-        "user-runtime-dir@".serviceConfig = mkIf cfg.wslg (
-	  lib.mkOverride 0 {
-	    ExecStart = ''/run/wrappers/bin/mount --bind /mnt/wslg/runtime-dir /run/user/%i'';
-	    ExecStop = ''/run/wrappers/bin/umount /run/user/%i'';
-          }
-        );
+      systemd.services."user-runtime-dir@".serviceConfig = mkIf cfg.wslg (
+        lib.mkOverride 0 {
+          ExecStart = ''/run/wrappers/bin/mount --bind /mnt/wslg/runtime-dir /run/user/%i'';
+          ExecStop = ''/run/wrappers/bin/umount /run/user/%i'';
+        }
+      );
 
-        firewall.enable = false;
-        systemd-resolved.enable = false;
-        systemd-udevd.enable = false;
-      };
+      systemd.services.firewall.enable = false;
+      systemd.services.systemd-resolved.enable = false;
+      systemd.services.systemd-udevd.enable = false;
 
       systemd.suppressedSystemUnits = [
         "systemd-networkd.service"
