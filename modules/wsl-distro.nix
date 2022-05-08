@@ -199,6 +199,11 @@ with builtins; with lib;
           }
         );
 
+        firewall.enable = false;
+        systemd-resolved.enable = false;
+        systemd-udevd.enable = false;
+      };
+
       systemd.suppressedSystemUnits = [
         "systemd-networkd.service"
         "systemd-networkd-wait-online.service"
@@ -213,10 +218,5 @@ with builtins; with lib;
         "dirmngr.socket"
         "sys-kernel-debug.mount"
       ];
-
-        firewall.enable = false;
-        systemd-resolved.enable = false;
-        systemd-udevd.enable = false;
-      };
     };
 }
