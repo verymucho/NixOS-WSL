@@ -15,7 +15,7 @@ with builtins; with lib;
       };
       automountOptions = mkOption {
         type = str;
-        default = "metadata,uid=1000,gid=100,case=dir";
+        default = "metadata,uid=1000,gid=100,umask=22,fmask=11,case=dir";
         description = "Options to use when mounting windows drives";
       };
       defaultUser = mkOption {
@@ -78,10 +78,11 @@ with builtins; with lib;
 
       wsl.wslConf = {
         automount = {
-          enabled = true;
-          mountFsTab = true;
-          root = "${cfg.automountPath}/";
+          enabled = "true";
+          ldconfig = "false";
+          mountFsTab = "true";
           options = cfg.automountOptions;
+          root = "${cfg.automountPath}/";
         };
 
         network = {
@@ -129,6 +130,22 @@ with builtins; with lib;
             };
         };
       };
+
+      environment.systemPackages = with pkgs; [
+        git
+        wget
+        fzf
+        unzip
+        zip
+        unrar
+        exa
+        lsd
+        wslu
+        wsl-open
+        aria2
+        tmux
+      ];
+
       environment.noXlibs = lib.mkForce false; # override xlibs not being installed (due to isContainer) to enable the use of GUI apps
 
       environment = {
@@ -142,6 +159,17 @@ with builtins; with lib;
           hosts.enable = false;
           "resolv.conf".enable = false;
         };
+
+        shellAliases = {
+          diff = "diff --color=auto";
+          grep = "grep --color=auto --exclude-dir={.bzr,CVS,.git,.hg,.svn}";
+          exa = "exa -gahHF@ --group-directories-first --time-style=long-iso --color-scale --icons --git";
+          l = "ls -l";
+          ll = "lsd -AFl --group-dirs first --total-size";
+          ls = "exa -lG";
+          lt = "ls -T";
+          tree = "tree -aC -I .git --dirsfirst";
+        };
       };
 
       # Set your time zone.
@@ -149,6 +177,19 @@ with builtins; with lib;
 
       # Select internationalisation properties.
       i18n.defaultLocale = "en_US.UTF-8";
+
+      programs = {
+        zsh = {
+          enable = true;
+          enableCompletion = true;
+          autosuggestions.enable = true;
+          setOptions = [ "EXTENDED_HISTORY" ];
+        };
+        bash.enableCompletion = true;
+        command-not-found.enable = true;
+        fuse.userAllowOther = true;
+        tmux.enable = true;
+      };
 
       services = {
         samba.enable = false;
@@ -164,6 +205,7 @@ with builtins; with lib;
 
       users.users.${cfg.defaultUser} = {
         isNormalUser = true;
+        shell = pkgs.zsh;
         uid = 1000;
         extraGroups = [ "wheel" "lp" "docker" "networkmanager" "audio" "video" "plugdev" "kvm" "cdrom" "bluetooth" ]; # Allow the default user to use sudo
       };
