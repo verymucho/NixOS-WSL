@@ -5,7 +5,7 @@ let
 
   nixpkgs = lib.cleanSource pkgs.path;
 
-  channelSources = pkgs.runCommand "nixos-unstable"
+  channelSources = pkgs.runCommand "nixos-${config.system.nixos.version}"
     { preferLocalBuild = true; }
     ''
       mkdir -p $out

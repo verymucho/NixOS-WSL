@@ -30,42 +30,13 @@ with builtins; with lib;
       };
       startMenuLaunchers = mkEnableOption "shortcuts for GUI applications in the windows start menu";
       wslConf = mkOption {
-        type = attrsOf (attrsOf coercedToStr);
+        type = attrsOf (attrsOf (oneOf [ string int bool ]));
         description = "Entries that are added to /etc/wsl.conf";
       };
-
-      interop = {
-        register = mkOption {
-          type = bool;
-          default = true;
-          description = "Explicitly register the binfmt_misc handler for Windows executables";
-        };
-
-        includePath = mkOption {
-          type = bool;
-          default = true;
-          description = "Include Windows PATH in WSL PATH";
-        };
-      };
-
       wslg = mkOption {
         type = bool;
         default = true;
         description = "Fix user runtime mount so it points to /mnt/wslg/runtime-dir";
-      };
-
-      compatibility = {
-        interopPreserveArgvZero = mkOption {
-          type = nullOr bool;
-          default = true;
-          description = ''
-            Register binfmt interpreter for Windows executables with 'preserves argv[0]' flag.
-
-            Default (null): autodetect, at some performance cost.
-            To avoid the performance cost, set this to true for WSL Preview 0.58 and up,
-            or to false for older versions (including pre-Microsoft Store).
-          '';
-        };
       };
     };
 
@@ -78,58 +49,24 @@ with builtins; with lib;
 
       wsl.wslConf = {
         automount = {
-          enabled = "true";
-          ldconfig = "false";
-          mountFsTab = "true";
-          options = cfg.automountOptions;
+          enabled = true;
+          ldconfig = false;
+          mountFsTab = true;
           root = "${cfg.automountPath}/";
+          options = cfg.automountOptions;
         };
-
         network = {
           hostname = "${cfg.defaultHostname}";
+          generateResolvConf = mkDefault true;
+          generateHosts = mkDefault true;
         };
       };
 
       # WSL is closer to a container than anything else
-      boot = {
-        isContainer = true;
-        enableContainers = true;
+      boot.isContainer = true;
 
-        binfmt.registrations = mkIf cfg.interop.register {
-          WSLInterop =
-            let
-              compat = cfg.compatibility.interopPreserveArgvZero;
-
-              # WSL Preview 0.58 and up registers the /init binfmt interp for Windows executable
-              # with the "preserve argv[0]" flag, so if you run `./foo.exe`, the interp gets invoked
-              # as `/init foo.exe ./foo.exe`.
-              #   argv[0] --^        ^-- actual path
-              #
-              # Older versions expect to be called without the argv[0] bit, simply as `/init ./foo.exe`.
-              #
-              # We detect that by running `/init /known-not-existing-path.exe` and checking the exit code:
-              # the new style interp expects at least two arguments, so exits with exit code 1,
-              # presumably meaning "parsing error"; the old style interp attempts to actually run
-              # the executable, fails to find it, and exits with 255.
-              compatWrapper = pkgs.writeShellScript "nixos-wsl-binfmt-hack" ''
-                /init /nixos-wsl-does-not-exist.exe
-                [ $? -eq 255 ] && shift
-                exec /init $@
-              '';
-
-              # use the autodetect hack if unset, otherwise call /init directly
-              interpreter = if compat == null then compatWrapper else "/init";
-
-              # enable for the wrapper and autodetect hack
-              preserveArgvZero = if compat == false then false else true;
-            in
-            {
-              magicOrExtension = "MZ";
-              fixBinary = true;
-              inherit interpreter preserveArgvZero;
-            };
-        };
-      };
+      environment.noXlibs = lib.mkForce false; # override xlibs not being installed (due to isContainer) to enable the use of GUI apps
+      hardware.opengl.enable = true; # Enable GPU acceleration
 
       environment.systemPackages = with pkgs; [
         git
@@ -146,18 +83,14 @@ with builtins; with lib;
         tmux
       ];
 
-      environment.noXlibs = lib.mkForce false; # override xlibs not being installed (due to isContainer) to enable the use of GUI apps
-
       environment = {
-        # Include Windows %PATH% in Linux $PATH.
-        extraInit = mkIf cfg.interop.includePath ''PATH="$PATH:$WSLPATH"'';
 
         etc = {
           "wsl.conf".text = generators.toINI { } cfg.wslConf;
 
           # DNS settings are managed by WSL
-          hosts.enable = false;
-          "resolv.conf".enable = false;
+          hosts.enable = !config.wsl.wslConf.network.generateHosts;
+          "resolv.conf".enable = !config.wsl.wslConf.network.generateResolvConf;
         };
 
         shellAliases = {
@@ -170,6 +103,25 @@ with builtins; with lib;
           lt = "ls -T";
           tree = "tree -aC -I .git --dirsfirst";
         };
+
+        systemPackages = [
+          (pkgs.runCommand "wslpath" { } ''
+            mkdir -p $out/bin
+            ln -s /init $out/bin/wslpath
+          '')
+          pkgs.git
+          pkgs.wget
+          pkgs.fzf
+          pkgs.unzip
+          pkgs.zip
+          pkgs.unrar
+          pkgs.exa
+          pkgs.lsd
+          pkgs.wslu
+          pkgs.wsl-open
+          pkgs.aria2
+          pkgs.tmux
+        ];
       };
 
       # Set your time zone.
@@ -200,30 +152,32 @@ with builtins; with lib;
           SystemMaxUse=200M
         '';
       };
+    };
 
-      networking.dhcpcd.enable = false;
+    networking.dhcpcd.enable = false;
 
-      users.users.${cfg.defaultUser} = {
-        isNormalUser = true;
-        shell = pkgs.zsh;
-        uid = 1000;
-        extraGroups = [ "wheel" "lp" "docker" "networkmanager" "audio" "video" "plugdev" "kvm" "cdrom" "bluetooth" ]; # Allow the default user to use sudo
-      };
+    users.users.${cfg.defaultUser} = {
+      isNormalUser = true;
+      shell = pkgs.zsh;
+      uid = 1000;
+      extraGroups = [ "wheel" "lp" "docker" "networkmanager" "audio" "video" "plugdev" "kvm" "cdrom" "bluetooth" ]; # Allow the default user to use sudo
+    };
 
-      users.users.root = {
-        shell = "${syschdemd}/bin/syschdemd";
-        # Otherwise WSL fails to login as root with "initgroups failed 5"
-        extraGroups = [ "root" ];
-      };
+    users.users.root = {
+      shell = "${syschdemd}/bin/syschdemd";
+      # Otherwise WSL fails to login as root with "initgroups failed 5"
+      extraGroups = [ "root" ];
+    };
 
-      security.sudo = {
-        extraConfig = ''
-          Defaults env_keep+=INSIDE_NAMESPACE
-        '';
-        wheelNeedsPassword = mkDefault false; # The default user will not have a password by default
-      };
+    security.sudo = {
+      extraConfig = ''
+        Defaults env_keep+=INSIDE_NAMESPACE
+      '';
+      wheelNeedsPassword = mkDefault false; # The default user will not have a password by default
+    };
 
-      system.activationScripts.copy-launchers = mkIf cfg.startMenuLaunchers (
+    system.activationScripts = {
+      copy-launchers = mkIf cfg.startMenuLaunchers (
         stringAfter [ ] ''
           for x in applications icons; do
             echo "Copying /usr/share/$x"
@@ -232,19 +186,38 @@ with builtins; with lib;
           done
         ''
       );
+      populateBin = stringAfter [ ] ''
+        echo "setting up /bin..."
+        ln -sf /init /bin/wslpath
+        ln -sf ${pkgs.bashInteractive}/bin/bash /bin/sh
+        ln -sf ${pkgs.util-linux}/bin/mount /bin/mount
+      '';
+    };
 
-      systemd.services."user-runtime-dir@".serviceConfig = mkIf cfg.wslg (
-        lib.mkOverride 0 {
-          ExecStart = ''/run/wrappers/bin/mount --bind /mnt/wslg/runtime-dir /run/user/%i'';
-          ExecStop = ''/run/wrappers/bin/umount /run/user/%i'';
-        }
-      );
+    systemd = {
+      # Disable systemd units that don't make sense on WSL
+      services = {
+        "serial-getty@ttyS0".enable = false;
+        "serial-getty@hvc0".enable = false;
+        "getty@tty1".enable = false;
+        "autovt@".enable = false;
+        firewall.enable = false;
+        systemd-resolved.enable = false;
+        systemd-udevd.enable = false;
+        "user-runtime-dir@".serviceConfig = mkIf cfg.wslg (
+          lib.mkOverride 0 {
+            ExecStart = ''/run/wrappers/bin/mount --bind /mnt/wslg/runtime-dir /run/user/%i'';
+            ExecStop = ''/run/wrappers/bin/umount /run/user/%i'';
+          }
+        );
+      };
 
-      systemd.services.firewall.enable = false;
-      systemd.services.systemd-resolved.enable = false;
-      systemd.services.systemd-udevd.enable = false;
+      tmpfiles.rules = [
+        # Don't remove the X11 socket
+        "d /tmp/.X11-unix 1777 root root"
+      ];
 
-      systemd.suppressedSystemUnits = [
+      suppressedSystemUnits = [
         "systemd-networkd.service"
         "systemd-networkd-wait-online.service"
         "networkd-dispatcher.service"
@@ -258,5 +231,10 @@ with builtins; with lib;
         "dirmngr.socket"
         "sys-kernel-debug.mount"
       ];
+
+      # Don't allow emergency mode, because we don't have a console.
+      enableEmergencyMode = false;
     };
+    warnings = (optional (config.systemd.services.systemd-resolved.enable && config.wsl.wslConf.network.generateResolvConf) "systemd-resolved is enabled, but resolv.conf is managed by WSL");
+  };
 }

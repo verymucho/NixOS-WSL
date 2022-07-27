@@ -2,7 +2,7 @@
   description = "NixOS WSL";
 
   inputs = {
-    nixpkgs.url = "nixpkgs/nixos-unstable";
+    nixpkgs.url = "nixpkgs/nixos-22.05";
     flake-utils.url = "github:numtide/flake-utils";
 
     flake-compat = {
@@ -21,6 +21,7 @@
           ./modules/docker-native.nix
           ./modules/installer.nix
           ./modules/windows-hello.nix
+          ./modules/interop.nix
           ./modules/wsl-distro.nix
         ];
       };
